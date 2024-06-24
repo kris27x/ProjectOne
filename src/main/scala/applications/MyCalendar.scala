@@ -1,9 +1,10 @@
 package applications
+
 import lib.picture.Picture
-import java.time.{YearMonth, DayOfWeek}
+import java.time.{YearMonth, LocalDate, DayOfWeek}
 import java.time.format.TextStyle
 import java.util.Locale
-import lib.picture.Picture.*
+import lib.picture.Picture._
 import scala.collection.mutable.ListBuffer
 
 object MyCalendar {
@@ -24,14 +25,12 @@ object MyCalendar {
   // Mutable ListBuffer to store events
   private val events: ListBuffer[Event] = ListBuffer.empty
 
-
-
   /**
    * The columns of the calendar are set to a given width.
    */
   val EventWidth: Int = 25
 
-  /**s
+  /**
    * The place where the events are stored.
    */
   val EventsPath: String = "dat/events.txt"
@@ -41,11 +40,7 @@ object MyCalendar {
    *
    * @return The number of days in a given month for a given year.
    */
-  def daysInMonth(year: Int, month: Int): Int = month match {
-    case 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31
-    case 4 | 6 | 9 | 11 => 30
-    case _ => if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) then 29 else 28
-  }
+  def daysInMonth(year: Int, month: Int): Int = YearMonth.of(year, month).lengthOfMonth()
 
   /**
    * The names of the months are stored in a Map relating month numbers (1..) to names.
@@ -89,12 +84,10 @@ object MyCalendar {
     val t = List(0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4)
     val d = day
     val m = month
-    val y = if month < 3 then year - 1 else year
+    val y = if (month < 3) year - 1 else year
     val answerSundayEq0 = (y + y / 4 - y / 100 + y / 400 + t(m - 1) + d) % 7
-    val answerMondayEq0 = (answerSundayEq0 + 6) % 7
-    answerMondayEq0
+    (answerSundayEq0 + 6) % 7
   }
-
 
   /**
    * The names of the days are stored as a sequence of pictures. To ensure that all the
@@ -124,48 +117,36 @@ object MyCalendar {
    * }}}
    * @return A sequence of events.
    */
-  def readEventsFromFile(filename: String): Seq[Event] =
+  def readEventsFromFile(filename: String): Seq[Event] = {
     import java.io.File
     import scala.io.{BufferedSource, Source}
     val fileHandle: BufferedSource = Source.fromFile(filename)
-    val lines: Seq[String] = fileHandle.getLines.toList
+    val lines: Seq[String] = fileHandle.getLines().toList
     fileHandle.close()
-    for
-      line <- lines
-      if line.nonEmpty
-    yield
+    lines.filter(_.nonEmpty).map { line =>
       val (datetime, description) = line.split("\\s+").toList.splitAt(5)
-      val (List(year, month, day), List(hour, minute)) = datetime map (_.toInt) splitAt 3
+      val (List(year, month, day), List(hour, minute)) = datetime.map(_.toInt).splitAt(3)
       Event(Date(year, month, day), Time(hour, minute), description.mkString(" "))
+    }
+  }
 
   /**
-   * A method to make up random diary events.  Useful for testing.
-   * N.B. It over-writes the file at EventsPath
+   * A method to make up random diary events. Useful for testing.
+   * N.B. It over-writes the file at EventsPath.
    */
   def makeUpEvents(numberOfEvents: Int, filename: String): Unit = {
-    import java.io.File
-    import java.io.BufferedWriter
-    import java.io.FileWriter
-    import scala.io.{BufferedSource, Source}
+    import java.io.{BufferedWriter, File, FileWriter}
     val file = new File(filename)
     val fileHandle = new BufferedWriter(new FileWriter(file))
     val r = scala.util.Random
     for (_ <- 1 to numberOfEvents) {
       val yy = r.nextInt(2) + 2023 // Uses dates in 2023 and 2024
       val mm = r.nextInt(12) + 1
-      val dd =
-        if Set(1, 3, 5, 7, 8, 10, 12) contains mm then
-          r.nextInt(31) + 1
-        else if Set(4, 6, 9, 11) contains mm then
-          r.nextInt(30) + 1
-        else if (yy % 4 == 0 && yy % 100 != 0) || (yy % 400 == 0) then
-          r.nextInt(29) + 1
-        else
-          r.nextInt(28) + 1
-      val hrs = r.nextInt(14)
-      val mins = if r.nextInt(2) == 0 then 0 else 30
+      val dd = YearMonth.of(yy, mm).lengthOfMonth()
+      val hrs = r.nextInt(24)
+      val mins = if (r.nextInt(2) == 0) 0 else 30
       val desc = f"Event-auto-gen ($yy/$mm/$dd @ $hrs%02d:$mins%02d)"
-      fileHandle.write(f"$yy%4d$mm%4d$dd%4d  $hrs%02d $mins%02d $desc\n")
+      fileHandle.write(f"$yy%4d $mm%4d $dd%4d $hrs%02d $mins%02d $desc\n")
     }
     fileHandle.close()
   }
@@ -173,7 +154,7 @@ object MyCalendar {
   /** THE COURSEWORK METHOD
    * **********************************************************************************
    * Produces a picture (ready for display on the output console) of the given month in
-   * the calendar.  The events are filtered so that only those relevant for the given
+   * the calendar. The events are filtered so that only those relevant for the given
    * month are displayed.
    * ***********************************************************************************
    *
@@ -193,7 +174,6 @@ object MyCalendar {
   // Create a list of Picture objects for each day label with a fixed width
   private val header = dayLabels.map(Picture(_).fixWidth(slotWidth))
 
-
   // Method to add events
   def addEvent(year: Int, month: Int, day: Int, hour: Int, minute: Int, desc: String): Unit = {
     events += Event(Date(year, month, day), Time(hour, minute), desc)
@@ -205,14 +185,15 @@ object MyCalendar {
     // Calculate the number of days
     val daysInMonth = yearMonth.lengthOfMonth()
     // Get the first day of the week for the first day of the month
-    val firstDayOfWeek = yearMonth.atDay(1).getDayOfWeek().getValue()
+    val firstDayOfWeek = yearMonth.atDay(1).getDayOfWeek.getValue
 
     // Create a list of blank days to align the first day of the month with the correct day of the week
     val blankDays = List.fill(firstDayOfWeek - 1)(Picture(" ").fixWidth(slotWidth))
     // Create a list of Picture objects for each day of the month
     val monthDays = (1 to daysInMonth).map { day =>
-      // Filter events for the current day
+      // Filter events for the current day and sort them by time
       val eventTitles = events.filter(e => e.date.year == year && e.date.month == month && e.date.day == day)
+        .sortBy(e => (e.time.hour, e.time.minute)) // Sort events by hour and minute
         .map(e => s"${e.time.toPicture} ${e.desc}")
         .mkString("\n")
       // Create a string with the day number and events
@@ -249,13 +230,11 @@ object MyCalendar {
   }
 
   /**
-   * A method to create a set of random events ane write them to the
-   * default text file, EventsPath.  To change the number of events
+   * A method to create a set of random events and write them to the
+   * default text file, EventsPath. To change the number of events
    * simply adjust the number in the parameter list.
    */
-
-  @main def constructRandomEventFile(): Unit =
-    makeUpEvents(1000, EventsPath)
+  @main def constructRandomEventFile(): Unit = makeUpEvents(1000, EventsPath)
 
   @main def coursework(): Unit = {
     // Read the events from the file
@@ -266,8 +245,8 @@ object MyCalendar {
       addEvent(event.date.year, event.date.month, event.date.day, event.time.hour, event.time.minute, event.desc)
     }
 
-    // Display the calendar
-    println(displayMonth(2024, 3))
+    // Display the current month
+    val now = LocalDate.now()
+    displayMonth(now.getYear, now.getMonthValue)
   }
 }
-
